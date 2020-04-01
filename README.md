@@ -13,7 +13,7 @@ Misc => 1001186418888
 an so on..
 
 * Add the bot (1) into the your telegram group and start the conversation with the created telegram bot first by using telegram. e.g: /hello @BOT_NAME  
-* By using  https://api.telegram.org/bot<TOKEN>/getUpdates , we can obtain the chat_id of the group
+* By using  https://api.telegram.org/botYOURTOKENHERE/getUpdates , we can obtain the chat_id of the group
 
 4. Admin must create a new Generic Agent (GA) with option to execute custom module.
 
