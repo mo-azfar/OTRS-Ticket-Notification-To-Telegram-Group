@@ -7,7 +7,7 @@
 #
 #20200329 - 1st release based on TicketTelegramAgent.pm.
 #20200330 - Adding support to sent Text2 Param (Optional field). 
-
+#20200412 - Using otrs web user agent method to send telegram
 package Kernel::System::Ticket::Event::TicketTelegramGroup;
 
 use strict;
@@ -18,11 +18,8 @@ use File::Basename;
 use FindBin qw($RealBin);
 use lib dirname($RealBin);
 
-use SOAP::Lite;
 use Data::Dumper;
 use Fcntl qw(:flock SEEK_END);
-use LWP::UserAgent;
-use HTTP::Request::Common;
 use JSON::MaybeXS;
 #yum install -y perl-LWP-Protocol-https
 #yum install -y perl-JSON-MaybeXS
@@ -115,6 +112,7 @@ sub Run {
 	my $QueueObject = $Kernel::OM->Get('Kernel::System::Queue');
 	my $QueueID = $QueueObject->QueueLookup( Queue => $Ticket{Queue} );
 	my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
+	my $WebUserAgentObject = $Kernel::OM->Get('Kernel::System::WebUserAgent');
 	
 	# prepare owner fullname based on Text1 tag
     if ( $Text1 =~ /<OTRS_OWNER_UserFullname>/ ) {
@@ -185,60 +183,54 @@ sub Run {
             return;
         }
   	    
-		#START SENDING TELEGRAM
-		my $ua = LWP::UserAgent->new;
-		utf8::decode($Message1);
-		my $p = {
-		chat_id=>$TelegramGroupChatID,
-		parse_mode=>'HTML',
-		text=>$Message1,
-		reply_markup => {
-			#resize_keyboard => \1, # \1 = true when JSONified, \0 = false
-			inline_keyboard => [
-			# Keyboard: row 1
-			[
-			
-			{
-			text => 'View',
-			##callback_data => "Print"
-			url => $HttpType.'://'.$FQDN.'/'.$ScriptAlias.'index.pl?Action=AgentTicketZoom;TicketID='.$TicketID
-			}
-              
-			]
-						]
-						}
-		};
+		###START SENDING TELEGRAM
+		my $url = $HttpType.'://'.$FQDN.'/'.$ScriptAlias.'index.pl?Action=AgentTicketPrint;TicketID='.$TicketID;
+		#create a hash of your reply markup
+		my %replyMarkup  = (
+				inline_keyboard    => [[ 
+				{
+					text => 'View',
+					##callback_data => "Print"
+					url => $url
+				}
+		
+				]]
+				);#keyboard must be an array of array
+		
+		#Json encode
+		my $buttons = encode_json \%replyMarkup;
+		
+		my %Response = $WebUserAgentObject->Request(
+			URL          => "https://api.telegram.org/bot$Token/sendMessage",
+			Type         => 'POST',
+			Data         => {
+							chat_id=>$TelegramGroupChatID,
+							parse_mode=>'HTML',
+							text=>$Message1,
+							reply_markup => $buttons,
+							},
+			Header => {
+				Content_Type  => 'application/json',
+			},
+			SkipSSLVerification => 0, # (optional)
+			NoLog               => 0, # (optional)
+		);
+		
+		
+		#my $content  = $Response->decoded_content();
+		my @resCode = split / /, $Response{Status};
 	
-		my $response = $ua->request(
-			POST 'https://api.telegram.org/bot'.$Token.'/sendMessage',
-			Content_Type    => 'application/json',
-			Content         => JSON::MaybeXS::encode_json($p)
-		)	;
-		
-		#print Dumper($response);
-		my $content  = $response->decoded_content();
-		my $resCode = $response->code();
-		#print "RESPONSE CODE $resCode \n Content: $content\n\n";
-		
-		#RESPONSE CODE 200 - Sent
-		#RESPONSE CODE 400 - ChAT NOT FOUND
-		#RESPONSE CODE 401 - UNAITHORIZED
+		##RESPONSE CODE 200 - Sent
+		##RESPONSE CODE 400 - ChAT NOT FOUND
+		##RESPONSE CODE 401 - UNAITHORIZED
 		my $result;
-		if ($resCode eq "200")
+		if ($resCode[0] eq "200")
 		{
-			$result="Success";
-		}
-		elsif ($resCode eq "400")
-		{
-			$result="Chat Id not valid";
-		}
-		elsif ($resCode eq "401")
-		{
-			$result="Wrong Token";
+		$result="Success";
 		}
 		else
 		{
-			$result="Unknow Error";
+		$result = $resCode[0];
 		}
 		
 		my $TicketHistory = $TicketObject->HistoryAdd(
