@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <otrs_package version="1.0">
-    <Name>mo-azfar-Telegram-Group_Channel-Notification</Name>
+    <Name>mo-azfar-NotificationToTelegramGroup</Name>
     <Version>6.0.1</Version>
     <ChangeLog Version="6.0.1" Date="2020-04-15 15:15:00 +0800">1st release.</ChangeLog>
     <Framework>6.0.x</Framework>
