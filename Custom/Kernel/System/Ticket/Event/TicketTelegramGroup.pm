@@ -8,6 +8,8 @@
 #20200329 - 1st release based on TicketTelegramAgent.pm.
 #20200330 - Adding support to sent Text2 Param (Optional field). 
 #20200412 - Using otrs web user agent method to send telegram
+#20200419 - Using Task scheduler instead direct sending
+#		  - Built self API for sending telegram (using LWP). 
 package Kernel::System::Ticket::Event::TicketTelegramGroup;
 
 use strict;
@@ -21,6 +23,8 @@ use lib dirname($RealBin);
 use Data::Dumper;
 use Fcntl qw(:flock SEEK_END);
 use JSON::MaybeXS;
+use LWP::UserAgent;
+use HTTP::Request::Common;
 #yum install -y perl-LWP-Protocol-https
 #yum install -y perl-JSON-MaybeXS
 
@@ -112,7 +116,7 @@ sub Run {
 	my $QueueObject = $Kernel::OM->Get('Kernel::System::Queue');
 	my $QueueID = $QueueObject->QueueLookup( Queue => $Ticket{Queue} );
 	my $ConfigObject = $Kernel::OM->Get('Kernel::Config');
-	my $WebUserAgentObject = $Kernel::OM->Get('Kernel::System::WebUserAgent');
+	
 	
 	# prepare owner fullname based on Text1 tag
     if ( $Text1 =~ /<OTRS_OWNER_UserFullname>/ ) {
@@ -183,67 +187,104 @@ sub Run {
             return;
         }
   	    
-		###START SENDING TELEGRAM
-		my $url = $HttpType.'://'.$FQDN.'/'.$ScriptAlias.'index.pl?Action=AgentTicketPrint;TicketID='.$TicketID;
-		#create a hash of your reply markup
-		my %replyMarkup  = (
-				inline_keyboard    => [[ 
-				{
-					text => 'View',
-					##callback_data => "Print"
-					url => $url
-				}
+		my $TicketURL = $HttpType.'://'.$FQDN.'/'.$ScriptAlias.'index.pl?Action=AgentTicketPrint;TicketID='.$TicketID;	
+					
+		# For Asynchronous sending
+		my $TaskName = substr "Recipient".rand().$TelegramGroupChatID, 0, 255;
 		
-				]]
-				);#keyboard must be an array of array
-		
-		#Json encode
-		my $buttons = encode_json \%replyMarkup;
-		
-		my %Response = $WebUserAgentObject->Request(
-			URL          => "https://api.telegram.org/bot$Token/sendMessage",
-			Type         => 'POST',
-			Data         => {
-							chat_id=>$TelegramGroupChatID,
-							parse_mode=>'HTML',
-							text=>$Message1,
-							reply_markup => $buttons,
-							},
-			Header => {
-				Content_Type  => 'application/json',
+		# instead of direct sending, we use task scheduler
+		my $TaskID = $Kernel::OM->Get('Kernel::System::Scheduler')->TaskAdd(
+			Type                     => 'AsynchronousExecutor',
+			Name                     => $TaskName,
+			Attempts                 =>  1,
+			MaximumParallelInstances =>  0,
+			Data                     => 
+			{
+				Object   => 'Kernel::System::Ticket::Event::TicketTelegramGroup',
+				Function => 'SendMessageTelegramGroup',
+				Params   => 
+						{
+							TicketURL => $TicketURL,
+							Token    => $Token,
+							TelegramGroupChatID  => $TelegramGroupChatID,
+							Message      => $Message1,
+							TicketID      => $TicketID, #sent for log purpose
+							Queue      => $Ticket{Queue}, #sent for log purpose
+						},
 			},
-			SkipSSLVerification => 0, # (optional)
-			NoLog               => 0, # (optional)
 		);
-		
-		
-		#my $content  = $Response->decoded_content();
-		my @resCode = split / /, $Response{Status};
-	
-		##RESPONSE CODE 200 - Sent
-		##RESPONSE CODE 400 - ChAT NOT FOUND
-		##RESPONSE CODE 401 - UNAITHORIZED
-		my $result;
-		if ($resCode[0] eq "200")
-		{
-		$result="Success";
-		}
-		else
-		{
-		$result = $resCode[0];
-		}
-		
-		my $TicketHistory = $TicketObject->HistoryAdd(
-        TicketID     => $TicketID,
-        QueueID      => $QueueID,
-        HistoryType  => 'SendAgentNotification',
-        Name         => "Telegram Notification to $Ticket{Queue} : $result",
-        CreateUserID => 1,
-		);			
-		
+					
 	}
 
 }
+
+=cut
+
+		my $Test = $Self->SendMessageTelegramGroup(
+			TicketURL => $TicketURL,
+			Token    => $Token,
+			TelegramGroupChatID  => $TelegramGroupChatID,
+			Message      => $Message1,
+			TicketID      => $TicketID, #sent for log purpose
+			Queue      => $Ticket{Queue}, #sent for log purpose
+		);
+
+=cut
+
+sub SendMessageTelegramGroup {
+	my ( $Self, %Param ) = @_;
+
+	my $ua = LWP::UserAgent->new;
+	utf8::decode($Param{Message});
+	my $p = {
+			chat_id=>$Param{TelegramGroupChatID},
+			parse_mode=>'HTML',
+			text=>$Param{Message},
+			reply_markup => {
+				#resize_keyboard => \1, # \1 = true when JSONified, \0 = false
+				inline_keyboard => [
+				# Keyboard: row 1
+				[
+				
+				{
+                text => 'View',
+                url => $Param{TicketURL}
+				}
+                  
+				]
+				]
+				}
+			};
+	
+	my $response = $ua->request(
+		POST "https://api.telegram.org/bot".$Param{Token}."/sendMessage",
+		Content_Type    => 'application/json',
+		Content         => JSON::MaybeXS::encode_json($p)
+       )	;
+	
+	my $ResponseData = $Kernel::OM->Get('Kernel::System::JSON')->Decode(
+        Data => $response->decoded_content,
+    );
+	
+	if ($ResponseData->{ok} eq 0)
+	{
+	$Kernel::OM->Get('Kernel::System::Log')->Log(
+			 Priority => 'error',
+			 Message  => "Telegram group notification to Queue $Param{Queue} ($Param{TelegramGroupChatID}): $ResponseData->{description}",
+		);
+	}
+	else
+	{
+	my $TicketObject = $Kernel::OM->Get('Kernel::System::Ticket');
+	my $TicketHistory = $TicketObject->HistoryAdd(
+        TicketID     => $Param{TicketID},
+        HistoryType  => 'SendAgentNotification',
+        Name         => "Sent Telegram Group Notification for Queue $Param{Queue}",
+        CreateUserID => 1,
+		);			
+	}
+}
+
 
 1;
 
