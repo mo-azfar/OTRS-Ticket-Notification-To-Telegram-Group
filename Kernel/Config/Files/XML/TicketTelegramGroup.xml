@@ -2,14 +2,14 @@
 <otrs_config version="2.0" init="Application">
     <Setting Name="TicketTelegramGroup::Token" Required="0" Valid="1">
         <Description Translatable="1">Defines the token use to send telegram group notification</Description>
-        <Navigation>TelegramToken</Navigation>
+        <Navigation>TelegramGroup</Navigation>
         <Value>
             <Item ValueType="String" ValueRegex="">TELEGRAM BOT TOKEN HERE</Item>
         </Value>
     </Setting>
     <Setting Name="TicketTelegramGroup::ChatID" Required="0" Valid="1">
         <Description Translatable="1">Defines the telegram group chat id for each queue.</Description>
-        <Navigation>TelegramGroupChatID</Navigation>
+        <Navigation>TelegramGroup</Navigation>
         <Value>
             <Hash>
                 <Item Key="Misc">-10011864565</Item>
