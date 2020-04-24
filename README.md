@@ -1,7 +1,7 @@
 # OTRS-Ticket-Notification-To-Telegram-Group
 - Built for OTRS CE v 6.0.x
 - Send ticket notification to SPECIFIC TELEGRAM GROUP based on Queue upon ticket action. E.g: TicketQueueUpdate
-- **Require CustomMessage module**  
+- **Require CustomMessage API** 
 
 1. A telegram bot must be created by chat with @FatherBot and obtain the token via Telegram.
 
