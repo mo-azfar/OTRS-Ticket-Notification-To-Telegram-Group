@@ -13,8 +13,8 @@ use File::Basename;
 use FindBin qw($RealBin);
 use lib dirname($RealBin);
 
-use Data::Dumper;
-use Fcntl qw(:flock SEEK_END);
+#use Data::Dumper;
+#use Fcntl qw(:flock SEEK_END);
 
 our @ObjectDependencies = (
     'Kernel::System::Ticket',
