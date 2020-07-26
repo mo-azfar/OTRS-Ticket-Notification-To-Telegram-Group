@@ -15,7 +15,10 @@
 		an so on..
     
 		Notes:
-		* Add the bot (1) into the your telegram group and start the conversation with the created telegram bot first by using telegram. e.g: /hello @BOT_NAME    
+		* Add the bot (1) into the your telegram group and start the conversation with the bot first. 
+		
+		e.g: /hello @BOT_NAME    
+		
 		* By using  https://api.telegram.org/bot<TOKEN>/getUpdates , we can obtain the chat_id of the group    
 
 
