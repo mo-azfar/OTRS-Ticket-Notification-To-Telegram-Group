@@ -13,8 +13,9 @@ use File::Basename;
 use FindBin qw($RealBin);
 use lib dirname($RealBin);
 
-#use Data::Dumper;
-#use Fcntl qw(:flock SEEK_END);
+use JSON::MaybeXS; #yum install -y perl-JSON-MaybeXS
+use LWP::UserAgent;  #yum install -y perl-LWP-Protocol-https
+use HTTP::Request::Common;
 
 our @ObjectDependencies = (
     'Kernel::System::Ticket',
@@ -24,30 +25,6 @@ our @ObjectDependencies = (
 	'Kernel::System::User',
 	
 );
-
-=head1 NAME
-
-Kernel::System::ITSMConfigItem::Event::DoHistory - Event handler that does the history
-
-=head1 SYNOPSIS
-
-All event handler functions for history.
-
-=head1 PUBLIC INTERFACE
-
-=over 4
-
-=cut
-
-=item new()
-
-create an object
-
-    use Kernel::System::ObjectManager;
-    local $Kernel::OM = Kernel::System::ObjectManager->new();
-    my $DoHistoryObject = $Kernel::OM->Get('Kernel::System::ITSMConfigItem::Event::DoHistory');
-
-=cut
 
 sub new {
     my ( $Type, %Param ) = @_;
@@ -188,7 +165,7 @@ sub Run {
 			MaximumParallelInstances =>  0,
 			Data                     => 
 			{
-				Object   => 'Kernel::System::CustomMessage',
+				Object   => 'Kernel::System::Ticket::Event::TicketTelegramGroup',
 				Function => 'SendMessageTelegramGroup',
 				Params   => 
 						{
@@ -204,6 +181,84 @@ sub Run {
 					
 	}
 
+}
+
+=cut
+
+		my $Test = $Self->SendMessageTelegramGroup(
+			TicketURL => $TicketURL,
+			Token    => $Token,
+			TelegramGroupChatID  => $TelegramGroupChatID,
+			Message      => $Message1,
+			TicketID      => $TicketID, #sent for log purpose
+			Queue      => $Ticket{Queue}, #sent for log purpose
+		);
+
+=cut
+
+sub SendMessageTelegramGroup {
+	my ( $Self, %Param ) = @_;
+
+	# check for needed stuff
+    for my $Needed (qw(TicketURL Token TelegramGroupChatID Message TicketID Queue)) {
+        if ( !$Param{$Needed} ) {
+            $Kernel::OM->Get('Kernel::System::Log')->Log(
+                Priority => 'error',
+                Message  => "Missing parameter $Needed!",
+            );
+            return;
+        }
+    }
+
+	my $ua = LWP::UserAgent->new;
+	utf8::decode($Param{Message});
+	my $p = {
+			chat_id=>$Param{TelegramGroupChatID},
+			parse_mode=>'HTML',
+			text=>$Param{Message},
+			reply_markup => {
+				#resize_keyboard => \1, # \1 = true when JSONified, \0 = false
+				inline_keyboard => [
+				# Keyboard: row 1
+				[
+				
+				{
+                text => 'View',
+                url => $Param{TicketURL}
+				}
+                  
+				]
+				]
+				}
+			};
+	
+	my $response = $ua->request(
+		POST "https://api.telegram.org/bot".$Param{Token}."/sendMessage",
+		Content_Type    => 'application/json',
+		Content         => JSON::MaybeXS::encode_json($p)
+       )	;
+	
+	my $ResponseData = $Kernel::OM->Get('Kernel::System::JSON')->Decode(
+        Data => $response->decoded_content,
+    );
+	
+	if ($ResponseData->{ok} eq 0)
+	{
+	$Kernel::OM->Get('Kernel::System::Log')->Log(
+			 Priority => 'error',
+			 Message  => "Telegram group notification to Queue $Param{Queue} ($Param{TelegramGroupChatID}): $ResponseData->{description}",
+		);
+	}
+	else
+	{
+	my $TicketObject = $Kernel::OM->Get('Kernel::System::Ticket');
+	my $TicketHistory = $TicketObject->HistoryAdd(
+        TicketID     => $Param{TicketID},
+        HistoryType  => 'SendAgentNotification',
+        Name         => "Sent Telegram Group Notification for Queue $Param{Queue}",
+        CreateUserID => 1,
+		);			
+	}
 }
 
 1;
