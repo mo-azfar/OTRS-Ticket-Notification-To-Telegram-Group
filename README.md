@@ -2,6 +2,12 @@
 - Built for OTRS CE v 6.0.x  
 - Send ticket notification to SPECIFIC TELEGRAM GROUP based on Queue upon ticket action. E.g: TicketQueueUpdate  
 
+	Used CPAN Module:
+	JSON::MaybeXS; #yum install -y perl-JSON-MaybeXS
+	LWP::UserAgent;  #yum install -y perl-LWP-Protocol-https
+	HTTP::Request::Common;	
+  
+  
 1. A telegram bot must be created by chat with @FatherBot and obtain the token via Telegram.  
   
 2. Update the telegram bot token at System Configuration > TicketTelegramGroup::Token  
